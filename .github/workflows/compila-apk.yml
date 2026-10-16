@@ -1,4 +1,4 @@
-name: Compila PDFicina Scan 0.1.2
+name: Compila PDFicina Scan 0.1.3
 
 on:
   workflow_dispatch:
@@ -33,8 +33,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED="3e2157d5d31b11a21a74e36ba8d933b9fdaf2aea74597f7281d788b63e0a2d3d"
-          ID="1ZSvNdg4cUW4zhD-ZAWCqpbNeSGQS1Q4u"
+          EXPECTED="4bc8bc5bfb6969519b43fa1a79122804f9ce120563b0039fff394e918e56bebc"
+          ID="1UTwQpLIG_VcPy_-Xc-culFfGF9pDurVq"
           for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
             if curl -fsSL --retry 2 --connect-timeout 20 "$URL" -o PDFicinaScan_ZIPMASTER.zip; then
               if echo "$EXPECTED  PDFicinaScan_ZIPMASTER.zip" | sha256sum -c -; then
@@ -44,32 +44,33 @@ jobs:
           done
           echo "$EXPECTED  PDFicinaScan_ZIPMASTER.zip" | sha256sum -c -
           unzip -q PDFicinaScan_ZIPMASTER.zip
-          sed -i 's/setTextAllCaps(false)/setAllCaps(false)/g' PDFicinaScan_0.1.2/app/src/main/java/it/pdficina/scan/Ui.java
-          test -f PDFicinaScan_0.1.2/app/build.gradle
+          test -f PDFicinaScan_0.1.3/app/build.gradle
       - name: Test geometria prospettica
         shell: bash
         run: |
           set -euo pipefail
-          cd PDFicinaScan_0.1.2
+          cd PDFicinaScan_0.1.3
           mkdir -p build/perspective-test
           javac -d build/perspective-test app/src/main/java/it/pdficina/scan/PerspectiveMath.java tests/PerspectiveMathTest.java
           java -cp build/perspective-test it.pdficina.scan.PerspectiveMathTest
+      - name: Test fotocamera interna
+        run: python3 PDFicinaScan_0.1.3/tests/camera-regression-check.py
       - name: Compila Android
-        run: cd PDFicinaScan_0.1.2 && gradle --no-daemon :app:assembleDebug
+        run: cd PDFicinaScan_0.1.3 && gradle --no-daemon :app:assembleDebug
       - name: Verifica firma e prepara APK
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release
-          APK=PDFicinaScan_0.1.2/app/build/outputs/apk/debug/app-debug.apk
+          APK=PDFicinaScan_0.1.3/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          cp "$APK" release/PDFicinaScan_0.1.2_GalaxyS24.apk
-          (cd release && sha256sum PDFicinaScan_0.1.2_GalaxyS24.apk > SHA256_APK.txt)
+          cp "$APK" release/PDFicinaScan_0.1.3_GalaxyS24.apk
+          (cd release && sha256sum PDFicinaScan_0.1.3_GalaxyS24.apk > SHA256_APK.txt)
       - name: Pubblica artefatto APK
         uses: actions/upload-artifact@v4
         with:
-          name: PDFicinaScan-0.1.2-APK
+          name: PDFicinaScan-0.1.3-APK
           path: release/*
           if-no-files-found: error
       - name: Pubblica Release scaricabile
@@ -78,9 +79,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="v0.1.2-prealfa"
+          TAG="v0.1.3-prealfa"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/PDFicinaScan_0.1.2_GalaxyS24.apk release/SHA256_APK.txt --clobber
+            gh release upload "$TAG" release/PDFicinaScan_0.1.3_GalaxyS24.apk release/SHA256_APK.txt --clobber
           else
-            gh release create "$TAG" release/PDFicinaScan_0.1.2_GalaxyS24.apk release/SHA256_APK.txt --target "$GITHUB_SHA" --title "PDFicina Scan 0.1.2 PRE-ALFA" --notes "Build sperimentale originale PDFicina Scan, non ancora collaudata su dispositivo reale." --prerelease
+            gh release create "$TAG" release/PDFicinaScan_0.1.3_GalaxyS24.apk release/SHA256_APK.txt --target "$GITHUB_SHA" --title "PDFicina Scan 0.1.3 PRE-ALFA" --notes "Nuova fotocamera interna Android Camera2: tentativo correttivo del crash della fotocamera Samsung. Sperimentale: verificare su S24." --prerelease
           fi
