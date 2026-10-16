@@ -1,0 +1,71 @@
+name: Verifica APK PDFicina Scan 0.1.5 e pubblica Release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-015.yml'
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  verify-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scarica artifact esatto della compilazione
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          gh run download 38979047315 --repo "$GITHUB_REPOSITORY" --name PDFicinaScan_0.1.5_UNSIGNED --dir artifact
+          echo "36c728ef7674e508207bd48af2eb4571155db93b920c12035a0b2df6e1351846  artifact/PDFicinaScan_0.1.5_UNSIGNED.apk" | sha256sum -c -
+      - name: Applica firma pubblica solo a questo esatto APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          python3 - <<'PY'
+          import base64, struct, zipfile, hashlib
+          from pathlib import Path
+          raw=Path('artifact/PDFicinaScan_0.1.5_UNSIGNED.apk').read_bytes()
+          block=base64.b64decode(Path('verification/signature-block-015.b64').read_text().strip(),validate=True)
+          assert block[-16:]==b'APK Sig Block 42'
+          eocd=raw.rfind(b'PK\x05\x06')
+          assert eocd>0
+          cd=struct.unpack_from('<I',raw,eocd+16)[0]
+          assert cd<eocd and cd+struct.unpack_from('<I',raw,eocd+12)[0]==eocd
+          tail=bytearray(raw[eocd:])
+          struct.pack_into('<I',tail,16,cd+len(block))
+          result=raw[:cd]+block+raw[cd:eocd]+tail
+          assert hashlib.sha256(result).hexdigest()=='2750fc9e05bb94fb23b39d7ddb50e19d21747413e73025e7a9b18ac77a78e877'
+          with zipfile.ZipFile(__import__('io').BytesIO(result)) as z:
+              assert z.testzip() is None
+              assert 'classes.dex' in z.namelist()
+          Path('release/PDFicinaScan_0.1.5_GalaxyS24.apk').write_bytes(result)
+          PY
+      - name: Verifica firma ufficiale Android e versione
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=release/PDFicinaScan_0.1.5_GalaxyS24.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --min-sdk-version 29 --verbose --print-certs "$APK" | tee release/VERIFICA_FIRMA.txt
+          grep -qi '7ac1b5e306473b2403644ae14e3af10c6a39b7e1e1b5ccba381450d4b171a236' release/VERIFICA_FIRMA.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -4
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -q "versionCode='6'"
+          (cd release && sha256sum PDFicinaScan_0.1.5_GalaxyS24.apk > SHA256_APK.txt)
+      - name: Pubblica APK firmato in GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=v0.1.5-prealfa
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/PDFicinaScan_0.1.5_GalaxyS24.apk release/SHA256_APK.txt release/VERIFICA_FIRMA.txt --clobber
+          else
+            gh release create "$TAG" release/PDFicinaScan_0.1.5_GalaxyS24.apk release/SHA256_APK.txt release/VERIFICA_FIRMA.txt --target "$GITHUB_SHA" --title "PDFicina Scan 0.1.5 PRE-ALFA" --notes "APK firmato con lo stesso certificato della 0.1.4; ritaglio migliorato e bordi suggeriti da confermare manualmente. Non ancora collaudato su S24." --prerelease
+          fi
