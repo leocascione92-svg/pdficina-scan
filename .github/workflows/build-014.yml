@@ -68,3 +68,13 @@ jobs:
           name: PDFicinaScan_0.1.4_UNSIGNED
           path: output/*
           if-no-files-found: error
+
+      - name: Recupera verificatore ufficiale Android
+        run: |
+          mkdir -p verification_tools
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" verification_tools/apksigner.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Android_apksigner_35
+          path: verification_tools/apksigner.jar
+          if-no-files-found: error
