@@ -44,6 +44,7 @@ jobs:
           done
           echo "$EXPECTED  PDFicinaScan_ZIPMASTER.zip" | sha256sum -c -
           unzip -q PDFicinaScan_ZIPMASTER.zip
+          sed -i 's/setTextAllCaps(false)/setAllCaps(false)/g' PDFicinaScan_0.1.2/app/src/main/java/it/pdficina/scan/Ui.java
           test -f PDFicinaScan_0.1.2/app/build.gradle
       - name: Test geometria prospettica
         shell: bash
