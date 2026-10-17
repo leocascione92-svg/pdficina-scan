@@ -1,0 +1,69 @@
+name: PDFicina Scan 0.1.12 - Build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-012.yml']
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Recupera sorgenti verificati
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="1qIMhiViKLim8CKop2U9PuGwK_I4KR9OC"
+          EXPECTED="674c27f639f2c5c3c1d18d33b4f150e714e3fbc1825344b59c9a8bee7e3f6424"
+          for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
+            if curl -fsSL --retry 2 --connect-timeout 20 "$URL" -o source.zip; then
+              if echo "$EXPECTED  source.zip" | sha256sum -c -; then break; fi
+            fi
+          done
+          echo "$EXPECTED  source.zip" | sha256sum -c -
+          unzip -tq source.zip
+          unzip -q source.zip
+      - name: Test Java regressione
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd PDFicinaScan_0.1.12
+          mkdir -p build/tests
+          javac -d build/tests app/src/main/java/it/pdficina/scan/{PerspectiveMath,FileNames,EdgeDetector,ArchiveNames,CaptureBatch,DocumentEnhancer,PageOrder,CameraFrameGeometry}.java tests/{PerspectiveMathTest,FileNamesTest,EdgeDetectorTest,ArchiveNamesTest,CaptureBatchTest,DocumentEnhancerTest,PageOrderTest,CameraFrameGeometryTest}.java
+          for t in PerspectiveMathTest FileNamesTest EdgeDetectorTest ArchiveNamesTest CaptureBatchTest DocumentEnhancerTest PageOrderTest CameraFrameGeometryTest; do java -cp build/tests "it.pdficina.scan.$t"; done
+          for f in tests/*regression-check.py tests/test_sign_v2.py; do python3 "$f"; done
+      - name: Compila APK release unsigned
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd PDFicinaScan_0.1.12
+          gradle --no-daemon :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Verifica APK e pubblica artefatto
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=PDFicinaScan_0.1.12/app/build/outputs/apk/release/app-release-unsigned.apk
+          unzip -tq "$APK"
+          unzip -Z1 "$APK" | grep -qx classes.dex
+          mkdir -p output
+          cp "$APK" output/PDFicinaScan_0.1.12_UNSIGNED.apk
+          (cd output && sha256sum PDFicinaScan_0.1.12_UNSIGNED.apk > SHA256_UNSIGNED.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PDFicinaScan-0.1.12-UNSIGNED
+          path: output/*
+          if-no-files-found: error
