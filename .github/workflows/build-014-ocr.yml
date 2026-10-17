@@ -23,8 +23,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ID="1tnjUQ3iAhGGB3ft_LQ2XMbvFKjEt-Mu2"
-          EXPECTED="4ca443f3d86f1aae5e1cb9964d4016289e16474d595806da964724aaa69f9318"
+          ID="1ZSvNdg4cUW4zhD-ZAWCqpbNeSGQS1Q4u"
+          EXPECTED="d47102947c7e93fa26633579c84ee28a4db92599f752d2f3ee725f0e76793545"
           for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
             if curl -fsSL --retry 2 --connect-timeout 20 "$URL" -o source.zip; then
               if echo "$EXPECTED  source.zip" | sha256sum -c -; then break; fi
