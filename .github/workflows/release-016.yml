@@ -21,7 +21,7 @@ jobs:
         run: |
           set -euo pipefail
           ID=1ZSvNdg4cUW4zhD-ZAWCqpbNeSGQS1Q4u
-          EXPECTED=ba484304dd02376c01772d2809869b2f1cefa0ca1b967bac5067cd5332ed4fc1
+          EXPECTED=3f3daa55c5811d0c9879b8e29dfcc34c928a200dffc6548e923bbc33d7bf0015
           for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
             if curl -fsSL --retry 2 --connect-timeout 20 "$URL" -o master.zip; then
               if echo "$EXPECTED  master.zip" | sha256sum -c -; then break; fi
