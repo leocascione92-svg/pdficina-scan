@@ -19,8 +19,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ID="1SDZflctXpdF3jdqDY7f9ceAWu8T07LFy"
-          EXPECTED="47df1229d8ea4d38f4d6d54ac484c919f6f692539dff1bbf76d4c93ca796c5df"
+          ID="1ZSvNdg4cUW4zhD-ZAWCqpbNeSGQS1Q4u"
+          EXPECTED="d47102947c7e93fa26633579c84ee28a4db92599f752d2f3ee725f0e76793545"
           for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
             if curl -fsSL --retry 3 --connect-timeout 30 "$URL" -o signed.zip; then
               if echo "$EXPECTED  signed.zip" | sha256sum -c -; then break; fi
@@ -29,7 +29,8 @@ jobs:
           echo "$EXPECTED  signed.zip" | sha256sum -c -
           unzip -tq signed.zip
           mkdir -p release
-          unzip -q signed.zip -d release
+          unzip -q signed.zip 'PDFicinaScan_0.1.14/release/*'
+          cp PDFicinaScan_0.1.14/release/* release/
           (cd release && sha256sum -c SHA256_APK.txt)
       - name: Controlli apksigner aapt modelli ARM64
         shell: bash
