@@ -1,0 +1,37 @@
+name: Verify PDFicina Scan 0.1.13
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release-013.yml']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+      - name: Get verified official ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 "https://drive.google.com/uc?export=download&id=1ZSvNdg4cUW4zhD-ZAWCqpbNeSGQS1Q4u" -o official.zip
+          echo "72ee20700522acba5e82a6b410b26b010521e26790fe20da1f449ea13a7c2d08  official.zip" | sha256sum -c -
+          unzip -q official.zip "PDFicinaScan_0.1.13/release/*"
+          mkdir -p release
+          cp PDFicinaScan_0.1.13/release/* release/
+          (cd release && sha256sum -c SHA256_APK.txt)
+      - name: Verify signed Android APK
+        shell: bash
+        run: |
+          APK=release/PDFicinaScan_0.1.13_GalaxyS24.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 29 --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK"
+      - name: Publish beta release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.13-prealfa release/PDFicinaScan_0.1.13_GalaxyS24.apk release/SHA256_APK.txt --title "PDFicina Scan 0.1.13 PRE-ALFA" --notes "Anteprima prima di salvare e nuovi filtri per documenti. Test fisici in attesa." --prerelease
