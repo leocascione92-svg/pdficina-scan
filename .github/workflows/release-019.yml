@@ -1,0 +1,60 @@
+name: Verifica APK PDFicina Scan 0.1.9 e pubblica Release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release-019.yml']
+permissions:
+  contents: write
+jobs:
+  validate-and-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+      - name: Recupera archivio ufficiale immutabile mediante SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="1ZSvNdg4cUW4zhD-ZAWCqpbNeSGQS1Q4u"
+          EXPECTED="cad64c7bcd934e71c09b664ca4d8b3c6b1e76e564ee732a4b870b01f50b3f1d7"
+          for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
+            if curl -fsSL --retry 2 --connect-timeout 20 "$URL" -o archive.zip; then
+              if echo "$EXPECTED  archive.zip" | sha256sum -c -; then break; fi
+            fi
+          done
+          echo "$EXPECTED  archive.zip" | sha256sum -c -
+          unzip -tq archive.zip
+          unzip -q archive.zip "PDFicinaScan_0.1.9/release/*"
+          mkdir -p release
+          cp PDFicinaScan_0.1.9/release/PDFicinaScan_0.1.9_GalaxyS24.apk release/
+          cp PDFicinaScan_0.1.9/release/SHA256_APK.txt release/
+          (cd release && sha256sum -c SHA256_APK.txt)
+      - name: Verifica ufficiale firma e versione
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=release/PDFicinaScan_0.1.9_GalaxyS24.apk
+          test -s "$APK"
+          unzip -tq "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 29 --print-certs "$APK" | tee signing.txt
+          grep -qi '7ac1b5e306473b2403644ae14e3af10c6a39b7e1e1b5ccba381450d4b171a236' signing.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee badging.txt
+          grep -F "versionCode='10'" badging.txt
+          grep -F "versionName='0.1.9'" badging.txt
+          grep -F "name='it.pdficina.scan'" badging.txt
+      - name: Pubblica versione di manutenzione
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.1.9-prealfa"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/PDFicinaScan_0.1.9_GalaxyS24.apk release/SHA256_APK.txt --clobber
+          else
+            gh release create "$TAG" release/PDFicinaScan_0.1.9_GalaxyS24.apk release/SHA256_APK.txt --target "$GITHUB_SHA" --title "PDFicina Scan 0.1.9 — FIX Termina" --notes "Fix barra di navigazione Samsung Galaxy S24: pulsante Termina sempre sopra i tasti sistema. Interfaccia con WindowInsets. Base 0.1.8 preservata, stesso certificato release. Collaudo reale ancora da effettuare." --prerelease
+          fi
