@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL --retry 3 "https://drive.google.com/uc?export=download&id=1ZSvNdg4cUW4zhD-ZAWCqpbNeSGQS1Q4u" -o official.zip
-          echo "72ee20700522acba5e82a6b410b26b010521e26790fe20da1f449ea13a7c2d08  official.zip" | sha256sum -c -
+          echo "dd31c0229998c8d70780ea9d4c0988a21f8fdb405c7ae0422cd69ae78b038177  official.zip" | sha256sum -c -
           unzip -q official.zip "PDFicinaScan_0.1.13/release/*"
           mkdir -p release
           cp PDFicinaScan_0.1.13/release/* release/
@@ -34,4 +34,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.1.13-prealfa release/PDFicinaScan_0.1.13_GalaxyS24.apk release/SHA256_APK.txt --title "PDFicina Scan 0.1.13 PRE-ALFA" --notes "Anteprima prima di salvare e nuovi filtri per documenti. Test fisici in attesa." --prerelease
+          if gh release view v0.1.13-prealfa >/dev/null 2>&1; then
+            gh release upload v0.1.13-prealfa release/PDFicinaScan_0.1.13_GalaxyS24.apk release/SHA256_APK.txt --clobber
+          else
+            gh release create v0.1.13-prealfa release/PDFicinaScan_0.1.13_GalaxyS24.apk release/SHA256_APK.txt --title "PDFicina Scan 0.1.13 PRE-ALFA" --notes "Anteprima e nuovi filtri documento. Test fisici in attesa." --prerelease
+          fi
