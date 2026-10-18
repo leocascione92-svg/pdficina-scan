@@ -1,0 +1,76 @@
+name: PDFicina Scan 0.1.15 - OCR adattivo
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-015-ocr-adaptive.yml'
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Android SDK 35
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Scarica ZIP sorgenti con checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="1uCMIpkfTomdkMAemDAc-k56s6fbtVVgy"
+          EXPECTED="d7c6d11495aae4c4182d5f95044e3f1f932a3d84fcb35e3ad4bafcc207bd53e0"
+          for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
+            if curl -fsSL --retry 2 --connect-timeout 20 "$URL" -o source.zip; then
+              if echo "$EXPECTED  source.zip" | sha256sum -c -; then break; fi
+            fi
+          done
+          echo "$EXPECTED  source.zip" | sha256sum -c -
+          unzip -tq source.zip
+          unzip -q source.zip
+          test -f PDFicinaScan_0.1.15/app/src/main/assets/tessdata/ita.traineddata
+          test -f PDFicinaScan_0.1.15/app/src/main/assets/tessdata/eng.traineddata
+      - name: Test JVM + regressioni
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd PDFicinaScan_0.1.15
+          mkdir -p build/jvm
+          javac -d build/jvm app/src/main/java/it/pdficina/scan/{OcrText,OcrPreprocess,OcrRanking,ArchiveNames,CameraFrameGeometry,CaptureBatch,DocumentEnhancer,DocumentLighting,EdgeDetector,FileNames,PageOrder,PerspectiveMath}.java tests/{OcrTextTest,OcrPreprocessTest,OcrRankingTest,ArchiveNamesTest,CameraFrameGeometryTest,CaptureBatchTest,DocumentEnhancerTest,DocumentLightingTest,EdgeDetectorTest,FileNamesTest,PageOrderTest,PerspectiveMathTest}.java
+          for TEST in OcrText OcrPreprocess OcrRanking ArchiveNames CameraFrameGeometry CaptureBatch DocumentEnhancer DocumentLighting EdgeDetector FileNames PageOrder PerspectiveMath; do
+            java -cp build/jvm it.pdficina.scan.${TEST}Test
+          done
+          for FILE in tests/*-check.py tests/test_sign_v2.py; do python3 "$FILE"; done
+      - name: Android assembleRelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd PDFicinaScan_0.1.15
+          gradle --no-daemon :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Verifica pacchetto e prepara artefatto
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="PDFicinaScan_0.1.15/app/build/outputs/apk/release/app-release-unsigned.apk"
+          unzip -tq "$APK"
+          unzip -Z1 "$APK" | grep -qx "classes.dex"
+          mkdir -p output
+          cp "$APK" output/PDFicinaScan_0.1.15_UNSIGNED.apk
+          (cd output && sha256sum PDFicinaScan_0.1.15_UNSIGNED.apk > SHA256_UNSIGNED.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PDFicinaScan-0.1.15-UNSIGNED
+          path: output/*
+          if-no-files-found: error
