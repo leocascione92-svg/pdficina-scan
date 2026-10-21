@@ -1,15 +1,18 @@
-# LumaFrame – Android video-call light
+# LumaFrame 2.0 — Galaxy S24 video-call light
 
-Standalone Android native application that draws a translucent, touch-through luminous frame on top of video calls. Works without root and has no networking, ad SDK, camera or microphone access.
+Minimal offline native Android application. Creates a non-interactive, touch-through light frame above video-call apps (WhatsApp, Meet etc.) with a translucent center.
 
-- Adjustable frame width, intensity and warm/neutral/cool temperature.
-- Optional system brightness boost (requires a separate permission).
-- Notification action to stop.
-- Manual activation; requires Display Over Other Apps permission.
-- Android 10+; targets Android 15; intended for Galaxy S24.
+## What's new in v2
+- **More effective light:** larger solid light band with a soft inner falloff; wider range up to 135 dp.
+- **Galaxy S24 rounded corners:** reads Android rounded display corner radius (Android 12+), with a manual radius fallback/override.
+- **Continuous colour temperature:** 2700–9000 K, in steps of 100 K, adjustable live while running.
+- Optional full screen brightness with permission; previous system brightness restored on normal shutdown.
+- Keeps original simple controls, offline operation and foreground stop notification.
 
-## APK build
-See [Actions](../../actions/workflows/android-apk.yml) and download the `LumaFrame-debug-APK` artifact from the successful run. The APK is a **debug build**, not a signed production release, and has not been tested on a physical phone.
+## Build
+On the isolated `lumaframe-build` branch, the GitHub Action compiles a debug APK on every push. Open the latest successful Actions run and download `LumaFrame-debug-APK`.
 
-## Notes
-Overlay behavior can differ by Android version and calling app; Android may block overlays in protected screens. Restoring brightness on forced process termination is not guaranteed.
+**APK debug signing warning:** GitHub Actions generates a different default debug signing key on each clean runner. An APK from a newer build might fail to install over a prior LumaFrame build with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. In that case uninstall the old app before installing this v2. This deletes preferences. Future production builds should use a stable and *private* release signing key.
+
+## Limitations
+A display is not a real photographic ring light: maximum intensity depends on display hardware, the fraction dedicated to the border, system screen brightness and the Android overlay transparency limit (0.8 to preserve touch-through). Some Android apps/screens may block overlays. After a forced system kill, brightness restoration is not guaranteed.
