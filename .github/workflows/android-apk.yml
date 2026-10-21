@@ -24,10 +24,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+      - name: Preserve debug signing identity between builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: lumaframe-v2-debug-key-v1
       - name: Assemble debug APK
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: LumaFrame-debug-APK
+          name: LumaFrame-2.0.1-installabile
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
