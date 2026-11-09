@@ -1,0 +1,87 @@
+name: PDFicina Scan 0.1.17 - Build Android verificata
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-017-hotfix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Repository
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Recupera sorgenti verificati da Google Drive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="1WVMonfgtKeZzc6UdEnDzswpDApy0CVCU"
+          EXPECTED="e83da10e0cd20d9cc299d9eb642b0dce5613c017ec33c4aea31f151650d7eed0"
+          for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
+            if curl -fsSL --retry 3 --connect-timeout 25 "$URL" -o source.zip; then
+              if echo "$EXPECTED  source.zip" | sha256sum --check --status; then
+                break
+              fi
+            fi
+          done
+          echo "$EXPECTED  source.zip" | sha256sum -c -
+          unzip -tq source.zip
+          unzip -q source.zip
+          test -f PDFicinaScan_0.1.17/app/build.gradle
+      - name: Test regressione JVM e interfaccia
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd PDFicinaScan_0.1.17
+          mkdir -p build/test-classes
+          javac -d build/test-classes app/src/main/java/it/pdficina/scan/{ArchiveNames,CameraFrameGeometry,CaptureBatch,DocumentEnhancer,DocumentLighting,EdgeDetector,FileNames,FocusMetering,ImageRotation,OcrAlternatives,OcrPreprocess,OcrRanking,OcrText,PageOrder,PerspectiveMath}.java tests/*Test.java
+          for FILE in tests/*Test.java; do
+            TEST="${FILE##*/}"
+            java -cp build/test-classes "it.pdficina.scan.${TEST%.java}"
+          done
+          for FILE in tests/*regression-check.py tests/test_sign_v2.py; do
+            python3 "$FILE"
+          done
+      - name: Compila APK Android Release senza firma
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd PDFicinaScan_0.1.17
+          gradle --no-daemon :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Verifica struttura e pubblica artefatto
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="PDFicinaScan_0.1.17/app/build/outputs/apk/release/app-release-unsigned.apk"
+          unzip -tq "$APK"
+          unzip -Z1 "$APK" | grep -qx classes.dex
+          mkdir -p output
+          cp "$APK" output/PDFicinaScan_0.1.17_UNSIGNED.apk
+          (cd output && sha256sum PDFicinaScan_0.1.17_UNSIGNED.apk > SHA256_UNSIGNED.txt)
+      - name: Carica APK da firmare separatamente
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDFicinaScan-0.1.17-UNSIGNED
+          path: output/*
+          if-no-files-found: error
