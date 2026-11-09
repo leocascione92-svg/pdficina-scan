@@ -1,0 +1,64 @@
+name: PDFicina Scan 0.1.17 - Verifica Android e pubblica APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-017-hotfix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Android build tools 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+      - name: Recupera APK ufficiale verificando checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="1tl7zHtAlIAFkJazR9rK1SVWx8QfAPYGs"
+          EXPECTED="7982b266e0348741ee374c711a90e6a0006d5b68c883504502d044aca63fe15d"
+          mkdir -p release
+          APK="release/PDFicinaScan_0.1.17_GalaxyS24.apk"
+          for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
+            if curl -fsSL --retry 3 --connect-timeout 25 "$URL" -o "$APK"; then
+              if echo "$EXPECTED  $APK" | sha256sum --check --status; then break; fi
+            fi
+          done
+          echo "$EXPECTED  $APK" | sha256sum -c -
+          unzip -tq "$APK"
+          (cd release && sha256sum PDFicinaScan_0.1.17_GalaxyS24.apk > SHA256_APK.txt)
+      - name: Verifica firma Android e versione
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/PDFicinaScan_0.1.17_GalaxyS24.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 29 --print-certs "$APK" | tee signature.txt
+          grep -qi '7ac1b5e306473b2403644ae14e3af10c6a39b7e1e1b5ccba381450d4b171a236' signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee manifest.txt
+          grep -F "name='it.pdficina.scan'" manifest.txt
+          grep -F "versionCode='18'" manifest.txt
+          grep -F "versionName='0.1.17'" manifest.txt
+          unzip -Z1 "$APK" | grep -qx classes.dex
+      - name: Pubblica GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.1.17-prealfa"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/PDFicinaScan_0.1.17_GalaxyS24.apk release/SHA256_APK.txt --clobber
+          else
+            gh release create "$TAG" release/PDFicinaScan_0.1.17_GalaxyS24.apk release/SHA256_APK.txt --title "PDFicina Scan 0.1.17 - Rotazione e bordi" --target "$GITHUB_SHA" --notes "Hotfix APK firmato con certificato permanente. Rotazione 90 gradi sinistra/destra e rilevamento bordi inclinati migliorato. Collaudo reale delle nuove funzioni sul Samsung Galaxy S24 ancora necessario." --prerelease
+          fi
