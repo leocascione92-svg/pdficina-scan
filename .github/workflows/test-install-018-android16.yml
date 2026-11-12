@@ -1,0 +1,53 @@
+name: PDFicina Scan - Test installazione reale Android 16
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/test-install-018-android16.yml']
+permissions:
+  contents: read
+jobs:
+  install-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scarica gli APK delle release ufficiali
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/apks/older /tmp/apks/newer
+          gh release download v0.1.17-prealfa --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir /tmp/apks/older
+          gh release download v0.1.18-prealfa --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir /tmp/apks/newer
+          sha256sum /tmp/apks/older/*.apk /tmp/apks/newer/*.apk
+          echo 'b36cd6c172f77e375aab56fb8f70d62479c17d5d0ccd1b332346c6017b237e4f  /tmp/apks/newer/PDFicinaScan_0.1.18_GalaxyS24.apk' | sha256sum -c -
+      - name: Configura KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Installa 0.1.17 e poi aggiornamento 0.1.18 su Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          cores: 2
+          ram-size: 2048M
+          heap-size: 512M
+          disable-animations: true
+          script: |
+            set -eu
+            adb wait-for-device
+            adb shell getprop ro.build.version.release
+            adb shell getprop ro.product.cpu.abilist
+            echo 'INSTALLAZIONE PULITA 0.1.17'
+            adb install -r /tmp/apks/older/PDFicinaScan_0.1.17_GalaxyS24.apk
+            adb shell pm path it.pdficina.scan
+            echo 'AGGIORNAMENTO IN-PLACE A 0.1.18'
+            adb install -r /tmp/apks/newer/PDFicinaScan_0.1.18_GalaxyS24.apk
+            adb shell pm path it.pdficina.scan
+            adb shell dumpsys package it.pdficina.scan | grep -m 2 'versionCode='
+            echo 'INSTALLAZIONE E AGGIORNAMENTO SUPERATI'
