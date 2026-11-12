@@ -1,0 +1,72 @@
+name: PDFicina Scan 0.1.18 - Build Adaptive Edge Detection
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-018-adaptive.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Recupera sorgenti con verifica SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="1jQ5fX2B03Mi1EUTg9Jr3snsxsBp1UX3G"
+          EXPECTED="d484d910309253779b44c51c6733bf06f60387ac4e5ff285c7d3e4be0e00a13f"
+          for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
+            if curl -fsSL --retry 2 --connect-timeout 20 "$URL" -o source.zip; then
+              if echo "$EXPECTED  source.zip" | sha256sum -c -; then break; fi
+            fi
+          done
+          echo "$EXPECTED  source.zip" | sha256sum -c -
+          unzip -tq source.zip
+          unzip -q source.zip
+          test -f PDFicinaScan_0.1.18/app/build.gradle
+      - name: Test Java e regressioni
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd PDFicinaScan_0.1.18
+          mkdir -p build/tests
+          javac -d build/tests app/src/main/java/it/pdficina/scan/{ArchiveNames,CameraFrameGeometry,CaptureBatch,DocumentEnhancer,DocumentLighting,EdgeDetector,FileNames,FocusMetering,ImageRotation,OcrAlternatives,OcrPreprocess,OcrRanking,OcrText,PageOrder,PerspectiveMath}.java tests/*Test.java
+          for t in tests/*Test.java; do
+            java -cp build/tests "it.pdficina.scan.$(basename "$t" .java)"
+          done
+          for t in tests/*regression-check.py tests/test_sign_v2.py; do python3 "$t"; done
+      - name: Compila Android APK release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd PDFicinaScan_0.1.18
+          gradle --no-daemon :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Convalida DEX e pubblica artefatto
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=PDFicinaScan_0.1.18/app/build/outputs/apk/release/app-release-unsigned.apk
+          unzip -tq "$APK"
+          unzip -Z1 "$APK" | grep -qx classes.dex
+          mkdir -p output
+          cp "$APK" output/PDFicinaScan_0.1.18_UNSIGNED.apk
+          (cd output && sha256sum PDFicinaScan_0.1.18_UNSIGNED.apk > SHA256_UNSIGNED.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PDFicinaScan-0.1.18-UNSIGNED
+          path: output/*
+          if-no-files-found: error
