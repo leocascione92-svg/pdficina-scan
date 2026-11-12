@@ -1,0 +1,58 @@
+name: PDFicina Scan 0.1.18 - Verify and Release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release-018-adaptive.yml']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Android build tools
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+      - name: Download signed APK and verify checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="1zy9AIgNyHzphIFLx3MjsA7LrzVTyI9YB"
+          EXPECTED="b79f3b1fed962637cc418056940e487722a4214d781cef5561bf1570d6a0a052"
+          for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
+            if curl -fsSL --retry 3 --connect-timeout 20 "$URL" -o signed.zip; then
+              if echo "$EXPECTED  signed.zip" | sha256sum -c -; then break; fi
+            fi
+          done
+          echo "$EXPECTED  signed.zip" | sha256sum -c -
+          unzip -tq signed.zip
+          mkdir -p release
+          unzip -q signed.zip -d release
+          (cd release && sha256sum -c SHA256_APK.txt)
+      - name: Official Android signature and app identity verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/PDFicinaScan_0.1.18_GalaxyS24.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 29 --print-certs "$APK" | tee signing.txt
+          grep -qi '7ac1b5e306473b2403644ae14e3af10c6a39b7e1e1b5ccba381450d4b171a236' signing.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee badging.txt
+          grep -F "name='it.pdficina.scan'" badging.txt
+          grep -F "versionCode='19'" badging.txt
+          grep -F "versionName='0.1.18'" badging.txt
+          unzip -Z1 "$APK" | grep -qx classes.dex
+      - name: Publish prerelease APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.1.18-prealfa"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/PDFicinaScan_0.1.18_GalaxyS24.apk release/SHA256_APK.txt --clobber
+          else
+            gh release create "$TAG" release/PDFicinaScan_0.1.18_GalaxyS24.apk release/SHA256_APK.txt --target "$GITHUB_SHA" --title "PDFicina Scan 0.1.18 — Riprova bordi" --notes "Aggiornamento sperimentale originale: retry su bordi poco contrastati, senza modificare immagini o vertici in caso di mancato riconoscimento. Base 0.1.17 preservata, certificato release invariato. Test fisico sul Samsung Galaxy S24 ancora necessario." --prerelease
+          fi
