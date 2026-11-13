@@ -1,0 +1,89 @@
+name: PDFicina Scan 0.1.19 - Verify Install Android 16 and Release
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/release-019-android16.yml']
+permissions:
+  contents: write
+jobs:
+  verify-install-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Android tools
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+      - name: Scarica APK firmato con verifica SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          ID="1aidiWPWYq6XfWzkHp22jrq_NCZzgGsH5"
+          EXPECTED="4a87e04d85e44a77dd6e6b84fba5d5b143b04d3463b7b86c5c6be86d84f796ad"
+          for URL in "https://drive.usercontent.google.com/download?id=${ID}&export=download&confirm=t" "https://drive.google.com/uc?export=download&id=${ID}"; do
+            if curl -fsSL --retry 2 --connect-timeout 20 "$URL" -o signed.zip; then
+              if echo "$EXPECTED  signed.zip" | sha256sum -c -; then break; fi
+            fi
+          done
+          echo "$EXPECTED  signed.zip" | sha256sum -c -
+          unzip -tq signed.zip
+          mkdir -p release
+          unzip -q signed.zip -d release
+          (cd release && sha256sum -c SHA256_APK.txt)
+      - name: Firma Android e versione ufficiali
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=release/PDFicinaScan_0.1.19_GalaxyS24.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 29 --print-certs "$APK" | tee signature.txt
+          grep -qi '7ac1b5e306473b2403644ae14e3af10c6a39b7e1e1b5ccba381450d4b171a236' signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee badging.txt
+          grep -F "name='it.pdficina.scan'" badging.txt
+          grep -F "versionCode='20'" badging.txt
+          grep -F "versionName='0.1.19'" badging.txt
+          unzip -Z1 "$APK" | grep -qx classes.dex
+      - name: Download APK v0.1.18 per verificare aggiornamento
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p previous
+          gh release download v0.1.18-prealfa --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir previous
+          echo 'b36cd6c172f77e375aab56fb8f70d62479c17d5d0ccd1b332346c6017b237e4f  previous/PDFicinaScan_0.1.18_GalaxyS24.apk' | sha256sum -c -
+      - name: Permessi KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Installazione Android 16 e aggiornamento in place
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          cores: 2
+          ram-size: 2048M
+          heap-size: 512M
+          disable-animations: true
+          script: |
+            set -eu
+            adb wait-for-device
+            echo "Install 0.1.18"
+            adb install -r previous/PDFicinaScan_0.1.18_GalaxyS24.apk
+            echo "Update 0.1.19, preserve app data"
+            adb install -r release/PDFicinaScan_0.1.19_GalaxyS24.apk
+            adb shell pm path it.pdficina.scan
+            adb shell dumpsys package it.pdficina.scan | grep -m 1 'versionCode=20'
+            echo "ANDROID16_UPDATE_019_SUCCESS"
+      - name: Pubblica release verificata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=v0.1.19-prealfa
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/PDFicinaScan_0.1.19_GalaxyS24.apk release/SHA256_APK.txt --clobber
+          else
+            gh release create "$TAG" release/PDFicinaScan_0.1.19_GalaxyS24.apk release/SHA256_APK.txt --target "$GITHUB_SHA" --title "PDFicina Scan 0.1.19 — Rileva foglio chiaro" --notes "Rilevamento aggiuntivo conservativo nel comando Riprova: fogli chiari su sfondo scuro. Rotazione, OCR offline, Camera2, PDF e originali invariati. Java 262 test, statici 69, apksigner e installazione+aggiornamento in-place su Android 16 verificati. Collaudo Galaxy S24 reale in attesa." --prerelease
+          fi
